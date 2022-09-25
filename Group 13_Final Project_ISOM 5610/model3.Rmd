@@ -1,0 +1,368 @@
+---
+title: "Model for Casual_OLS_1210"
+author: "Eric, Xiaoning Liu, 20560202"
+date: "December 10, 2018"
+output: html_document
+---
+Import the Dataset
+```{r}
+rm(list=ls())
+dat = read.csv("/Users/hongzwoods/Desktop/HKUST_MSBA/ISOM5610/proj2/group_proj/BikeShareByDay.csv", header = T)
+```
+
+Models to Predict # of Casual Users
+check correlation between counts(demand) of casual users and discrete variables
+```{r}
+#correlation between # of Casual Users and Numerical Predictors
+library(PerformanceAnalytics)
+chart.Correlation(dat[, c(14,10,11,12,13)])
+```
+
+Note: Casual is Strongly right skewed; conduct the log and squareroot transformations on it respectively
+The distribution of Casual turns to be more normal after transformation
+```{r}
+hist(dat$casual)
+hist(log(dat$casual))
+hist(sqrt(dat$casual))
+dat$Log_Casual <- log(dat$casual)
+dat$Sqrt_Casual <- sqrt(dat$casual)
+```
+predictor temp and atemp are correlated; temp is obsoleted 
+```{r} 
+#New Correlation Chart 
+library(PerformanceAnalytics) 
+chart.Correlation(dat[, c(17,10,11,12,13)]) 
+chart.Correlation(dat[, c(18,10,11,12,13)]) 
+``` 
+```{r}
+# 
+# ##Correlation between Categorical Variables and # of Casual Users
+# library(ggplot2)
+# library(gridExtra)
+# sbs1 = ggplot(dat, aes(x=as.factor(dat$season), y=dat$Log_Casual)) +
+#   geom_boxplot()+
+#   labs(title="Log_Casual vs season", ylab="Log_Casual", xlab="season")
+# sbs1
+# sbs2 = ggplot(dat, aes(x=as.factor(dat$yr), y=dat$Log_Casual)) +
+#   geom_boxplot()+
+#   labs(title="Log_Casual vs year", ylab="Log_Casual", xlab="year")
+# sbs2
+# sbs3 = ggplot(dat, aes(x=as.factor(dat$mnth), y=dat$Log_Casual)) +
+#   geom_boxplot()+
+#   labs(title="Log_Casual vs month", ylab="Log_Casual", xlab="month")
+# sbs3
+# sbs4 = ggplot(dat, aes(x=as.factor(dat$holiday), y=dat$Log_Casual)) +
+#   geom_boxplot()+
+#   labs(title="Log_Casual vs holiday", ylab="Log_Casual", xlab="holiday")
+# sbs4
+# sbs5 = ggplot(dat, aes(x=as.factor(dat$weekday), y=dat$Log_Casual)) +
+#   geom_boxplot()+
+#   labs(title="Log_Casual vs weekday", ylab="Log_Casual", xlab="weekday")
+# sbs5
+# sbs6 = ggplot(dat, aes(x=as.factor(dat$workingday), y=dat$Log_Casual)) +
+#   geom_boxplot()+
+#   labs(title="Log_Casual vs workingday", ylab="Log_Casual", xlab="workingday")
+# sbs6
+# sbs7 = ggplot(dat, aes(x=as.factor(dat$weathersit), y=dat$Log_Casual)) +
+#   geom_boxplot()+
+#   labs(title="Log_Casual vs weathersit", ylab="Log_Casual", xlab="weathersit")
+# sbs7
+# 
+# plot(dat$instant, dat$Log_Casual)
+
+
+```
+besides year, other variables used are factorized.
+In order to predict the future data with the year which is other than 2011 and 2012, predictor year is set as a numeric variable
+```{r}
+#transform categorical variables as factor 
+dat$yr[dat$yr == 0] <- 2011
+dat$yr[dat$yr == 1] <- 2012
+# dat$yr<-as.factor(dat$yr)
+dat$season<-as.factor(dat$season)
+dat$holiday<-as.factor(dat$holiday)
+dat$workingday<-as.factor(dat$workingday)
+dat$weathersit<-as.factor(dat$weathersit)
+dat$weekday<-as.factor(dat$weekday)
+dat$mnth<-as.factor(dat$mnth)
+str(dat)
+```
+
+split the dataset into trainnig and testing set in 8/2 ratio
+```{r}
+#split into training and testing set 
+train = dat[1: round((nrow(dat)*0.8)), ]
+test = dat[round(((nrow(dat)*0.8)+1)) : nrow(dat), ]
+dim(train)  #585  16
+dim(test)    #146 16
+
+```
+train the model with response variables  Log_Casual and Sqrt_Casual respectively
+
+```{r}
+#model0-full model 
+model.logcasual.0 = lm(Log_Casual ~ instant+season+yr+mnth+holiday+weekday+weathersit+atemp+hum+windspeed, data =train)
+summary(model.logcasual.0)
+model.sqrtcasual.0 = lm(Sqrt_Casual ~ instant+season+yr+mnth+holiday+weekday+weathersit+atemp+hum+windspeed, data =train)
+summary(model.sqrtcasual.0)
+```
+Check the VIF on both models trained above; VIFs of instant and yr1(year) are larger than 10, which indicated multicolinearity
+```{r, message=FALSE}
+#VIF of model.casual.0
+library(car)
+vif(model.logcasual.0)
+vif(model.sqrtcasual.0)
+```
+#Stepwise Selection (both direction) 
+same predictors are selected on both models
+lm(formula = Log_Casual ~ mnth + weekday + atemp + weathersit + 
+    yr + holiday + windspeed + hum + season, data = train)
+
+```{r}
+
+#Null Model
+model.logcasual.null = lm(Log_Casual ~ 1, data = train)
+model.sqrtcasual.null = lm(Sqrt_Casual ~ 1, data = train)
+
+library(MASS)
+library(HH)
+model.logcasual.step = step(model.logcasual.null, direction = "both", scope = list(upper=model.logcasual.0))
+summary(model.logcasual.step)
+model.sqrtcasual.step = step(model.sqrtcasual.null, direction = "both", scope = list(upper=model.sqrtcasual.0))
+summary(model.sqrtcasual.step)
+```
+VIFs of all the variables selected are lower than 10
+Residuals on both models violated the constant residual assumption with their small p values, which are less than 5%
+```{r}
+vif(model.logcasual.step)
+vif(model.sqrtcasual.step)
+#BP Test for checking the constant variance 
+library(car)
+ncvTest(model.logcasual.step)
+ncvTest(model.sqrtcasual.step)
+```
+```{r}
+# check the assumptions for model.logcasual.step
+stdres=rstandard(model.logcasual.step) # generate standardized residuals
+par(mfrow=c(2,2))
+qqnorm(stdres,main='Normal Probability Plot',xlab='Normal Quantiles',ylab='Standardized Residual Quantiles') # Check normality
+abline(0,1, col = "red")
+plot(model.logcasual.step$fitted.values,stdres,main='Versus Fits',xlab='Fitted Value',ylab='Standardized Residual') # Check 0-mean & constant variance
+abline(0,0, col = "red")
+hist(stdres,main='Histogram',xlab='Standardized Residual') # Check residual distribution
+plot(train$instant,stdres,type="o",main='Versus Order',xlab='TimeIndex',ylab='Standardized Residual') # Check independence
+abline(0,0,col = "red")
+
+# check the assumptions for model.sqrtcasual.step
+stdres2=rstandard(model.sqrtcasual.step) # generate standardized residuals
+par(mfrow=c(2,2))
+qqnorm(stdres2,main='Normal Probability Plot',xlab='Normal Quantiles',ylab='Standardized Residual Quantiles') # Check normality
+abline(0,1, col = "red")
+plot(model.sqrtcasual.step$fitted.values,stdres2,main='Versus Fits',xlab='Fitted Value',ylab='Standardized Residual') # Check 0-mean & constant variance
+abline(0,0, col = "red")
+hist(stdres2,main='Histogram',xlab='Standardized Residual') # Check residual distribution
+plot(train$instant,stdres2,type="o",main='Versus Order',xlab='TimeIndex',ylab='Standardized Residual') # Check independence
+abline(0,0,col = "red")
+```
+
+Conduct the Cochrane Orcut test 
+```{r, message=FALSE}
+#Cochrane-Orcutt procedure [Testing coefficient for residuals regression]
+#check independence assumption 
+library(Hmisc)
+co_test = summary(lm(model.logcasual.step$residuals ~ Lag(model.logcasual.step$residuals, 1)))
+co_test
+```
+```{r}
+#Cochrane-Orcutt method to fix the autocorrelation 
+rho = co_test$coefficients[2]
+train$lag_Log_Casual = Lag(train$Log_Casual,1)
+train$star_Log_Casual = train$Log_Casual - train$lag_Log_Casual * rho
+
+train$lag_yr = Lag(train$yr,1)
+train$star_yr = as.numeric(train$yr) - as.numeric(train$lag_yr) * rho
+
+train$lag_mnth = Lag(train$mnth,1)
+train$star_mnth = as.numeric(train$mnth) - as.numeric(train$lag_mnth) * rho
+
+train$lag_season = Lag(train$season,1)
+train$star_season = as.numeric(train$season) - as.numeric(train$lag_season) * rho
+
+train$lag_holiday = Lag(train$holiday,1)
+train$star_holiday = as.numeric(train$holiday) - as.numeric(train$lag_holiday) * rho
+
+train$lag_weekday = Lag(train$weekday,1)
+train$star_weekday = as.numeric(train$weekday) - as.numeric(train$lag_weekday) * rho
+
+train$lag_weathersit = Lag(train$weathersit,1)
+train$star_weathersit = as.numeric(train$weathersit) - as.numeric(train$lag_weathersit) * rho
+
+train$lag_atemp = Lag(train$atemp,1)
+train$star_atemp = train$atemp - train$lag_atemp * rho
+
+train$lag_windspeed = Lag(train$windspeed,1)
+train$star_windspeed = train$windspeed - rho * train$lag_windspeed
+
+train$lag_hum = Lag(train$hum,1)
+train$star_hum = train$hum - rho * train$lag_hum
+```
+
+```{r}
+co_reg = lm(star_Log_Casual~ star_yr+star_mnth+star_season+star_holiday+star_weekday+star_weathersit+star_atemp+star_hum+star_windspeed, data =train)
+summary(co_reg)
+```
+
+```{r}
+#Cochrane-Orcutt method
+co_test2 = summary(lm(co_reg$residuals ~ Lag(co_reg$residuals, 1)))
+co_test2
+```
+Train a new model with predictors yr+mnth+weathersit+atemp+hum+windspeed
+use anova to check the significance of the larger model
+once p-value is 2.2e-16 on anova, the larger model is significant
+```{r}
+model.logcasual.1 = lm(Log_Casual ~ yr+mnth+weathersit+atemp+hum+windspeed, data =train)
+summary(model.logcasual.1)
+anova(model.logcasual.step,model.logcasual.1)
+c(summary(model.logcasual.step)$r.squared, summary(model.logcasual.1)$r.squared)
+```
+
+> Prediction 
+
+```{r}
+#test set prediction
+log_prediction = predict(model.logcasual.step, newdata = test)
+prediction.casual = exp(log_prediction)
+```
+
+Accuracy 
+rmsd.casual:316.7829
+mad.casual:216.7138
+```{r}
+#Mean squred error of test set 
+n = length(test$casual)
+rmsd.casual=sqrt(sum((test$casual - prediction.casual)^2)/n)
+mad.casual=sum(abs(test$casual - prediction.casual))/n
+rmsd.casual
+mad.casual
+```
+
+```{r, warning=FALSE, message=F}
+library(tidyquant)
+ggplot(dat, aes(x= instant, y = casual))+
+  geom_rect(xmin = 586, xmax = 800, ymin = -1000, ymax = 10000,fill = palette_light()[[4]], alpha = 0.01) +
+  annotate("text", x=300, y=7800, label = "Train Region", color = "blue") +
+  annotate("text", x=650, y=1500, label = "Test Region", color = "blue") +
+  geom_point(aes(col = casual)) +
+  geom_point(aes(x = instant, y = prediction.casual), data = test, alpha = 0.5, color = palette_light()[[2]])
+```
+
+
+Models to Predict Registered
+Since the disbution of the cnt on registered users is roughly normal, no tranfomation is used on the resposne varibale
+```{r}
+model.regi.0 = lm(registered ~ instant+season+yr+mnth+holiday+weekday+weathersit+atemp+hum+windspeed, data =train)
+summary(model.regi.0)
+vif(model.regi.0)
+```
+use the stepwise selection method (both directions) to select predictors
+```{r}
+#Step Variable Selection both ways
+
+#Null Model
+model.regi.null = lm(registered ~ 1, data = train)
+
+library(MASS)
+library(HH)
+model.regi.step = step(model.regi.null, direction = "both", scope = list(upper=model.regi.0))
+summary(model.regi.step)
+
+vif(model.regi.step)
+ncvTest(model.regi.step)
+```
+When the BP test shows the residuals are not constant, quadric transformation is conducted on atemp(feeling temperature)
+```{r}
+#quadric transformation to atemp 
+train$sq_atemp = train$atemp ^2
+test$sq_atemp = test$atemp ^2
+```
+add the higher order term into the regression model
+```{r}
+model.regi.1 = lm(registered ~ mnth + weekday + weathersit + season + atemp + sq_atemp + holiday + windspeed + hum + yr, data = train)
+summary(model.regi.1)
+vif(model.regi.1)
+ncvTest(model.regi.1)
+```
+
+```{r, message=FALSE}
+#Cochrane-Orcutt procedure [Testing coefficient for residuals regression]
+#check independence assumption 
+library(Hmisc)
+co_test = summary(lm(model.regi.1$residuals ~ Lag(model.regi.1$residuals, 1)))
+co_test
+```
+
+
+```{r}
+# check the assumptions for model2
+stdres3=rstandard(model.regi.1) # generate standardized residuals
+par(mfrow=c(2,2))
+qqnorm(stdres3,main='Normal Probability Plot',xlab='Normal Quantiles',ylab='Standardized Residual Quantiles') # Check normality
+abline(0,1, col = "red")
+plot(model.regi.1$fitted.values,stdres3,main='Versus Fits',xlab='Fitted Value',ylab='Standardized Residual') # Check 0-mean & constant variance
+abline(0,0, col = "red")
+hist(stdres3,main='Histogram',xlab='Standardized Residual') # Check residual distribution
+plot(train$instant,stdres3,type="o",main='Versus Order',xlab='TimeIndex',ylab='Standardized Residual') # Check independence
+abline(0,0,col = "red")
+```
+Accuracy:
+rmsd.regi:926.9171
+mad.regi:684.1198
+```{r}
+#test set 
+prediction.regi = predict(model.regi.1, newdata = test)
+
+#Mean squred error of test set 
+n = length(test$registered)
+rmsd.regi=sqrt(sum((test$registered - prediction.regi)^2)/n)
+mad.regi=sum(abs(test$registered - prediction.regi))/n
+rmsd.regi
+mad.regi
+```
+
+```{r, warning=FALSE, message=F}
+library(tidyquant)
+ggplot(dat, aes(x= instant, y = registered))+
+  geom_rect(xmin = 586, xmax = 800, ymin = -1000, ymax = 10000,fill = palette_light()[[4]], alpha = 0.01) +
+  annotate("text", x=300, y=7800, label = "Train Region", color = "blue") +
+  annotate("text", x=650, y=1500, label = "Test Region", color = "blue") +
+  geom_point(aes(col = registered)) +
+  geom_point(aes(x = instant, y = prediction.regi), data = test, alpha = 0.5, color = palette_light()[[2]])
+```
+
+
+Predictions Combined
+Sum up the RMSD and MAD from the casual and registered models
+rmsd:1007.791
+mad:757.2409
+both rmsd and mad are lower than those two which are directly generated from the model used the total count(cnt) as a predictor
+```{r}
+prediction = prediction.casual + prediction.regi
+#Mean squred error of test set 
+n = length(test$cnt)
+rmsd=sqrt(sum((test$cnt - prediction)^2)/n)
+mad=sum(abs(test$cnt - prediction))/n
+rmsd
+mad
+
+```
+see how nicely the predicted dots scatter closely among the observed counts(cnt)
+```{r, warning=FALSE, message=F}
+library(tidyquant)
+ggplot(dat, aes(x= instant, y = cnt))+
+  geom_rect(xmin = 586, xmax = 800, ymin = -1000, ymax = 10000,fill = palette_light()[[4]], alpha = 0.01) +
+  annotate("text", x=300, y=7800, label = "Train Region", color = "blue") +
+  annotate("text", x=650, y=1500, label = "Test Region", color = "blue") +
+  geom_point(aes(col = cnt)) +
+  geom_point(aes(x = instant, y = prediction), data = test, alpha = 0.5, color = palette_light()[[2]])
+```

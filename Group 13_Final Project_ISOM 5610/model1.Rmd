@@ -1,0 +1,485 @@
+---
+title: "Final_Project_Lin_Yiqi"
+author: "Regina Lin"
+date: "12/1/2018"
+output: html_document
+---
+
+Dateset
+import dataset BikeShareByDay.csv
+```{r}
+
+rm(list=ls())
+#setwd("C:/Users/win/Desktop/Intro to BA/final project")
+dat = read.csv("BikeShareByDay.csv", header = T)
+head(dat, n=5)
+```
+
+> Expolatory Data Analysis 
+
+**numerical variable**
+graph trends for demands in casual and registered users along the time.
+1.demand in registered grows faster than the casual users 
+2.seasonal pattern is observed
+3.demand is usually higher in the registered section
+```{r, message=F}
+#Data Patterm
+#instant as timeindex 
+library(ggplot2)
+library(ggpubr)
+
+A0 = ggplot(dat, aes(x= instant, y = casual))+
+  geom_point(aes(col = casual), show.legend = FALSE)+
+  ggtitle("instant(Timeindex) vs casual")+
+  stat_smooth(
+    color = "red",
+    method = "loess"
+  )
+
+A00 = ggplot(dat, aes(x= instant, y = registered))+
+  geom_point(aes(col = registered), show.legend = FALSE)+
+  ggtitle("instant(Timeindex) vs registered")+
+  stat_smooth(
+    color = "red",
+    method = "loess"
+  )
+
+ggarrange(A0, A00, ncol = 2, nrow = 1)
+```
+1.the overall demand (inclduing registered and casual users) shares the similar trend with the registered one
+2.due to the obvious trend, instant(timeindex) is included in the regression model
+```{r}
+#Timeindex vs Count
+ggplot(dat, aes(x= instant, y = cnt))+
+  geom_point(aes(col = cnt))+
+  ggtitle("instant(Timeindex) vs Count")+
+  stat_smooth(
+    color = "red",
+    method = "loess"
+  )
+```
+
+Note: seasonal pattern 
+1.temperature roughly associates with the demand in positive direction
+2.both humidity and windspeed roughly associates with the demand in negative direction
+
+```{r, message=FALSE}
+library(gridExtra)
+#Temperature vs Count
+A1 = ggplot(dat, aes(x= temp, y = cnt))+
+  geom_point(aes(col = temp), alpha = 0.3)+
+  scale_color_gradient(low = "yellow", high = "red")+
+  ggtitle("Temperature vs Count")
+
+#Feeling Temperature vs Count
+A2 = ggplot(dat, aes(x= atemp, y = cnt))+
+  geom_point(aes(col = atemp), alpha = 0.3)+
+  scale_color_gradient(low = "yellow", high = "red")+
+  ggtitle("Feeling Temperature vs Count")
+
+#Humidity vs Count
+A3 = ggplot(dat, aes(x= hum, y = cnt))+
+  geom_point(aes(col = hum), alpha = 0.3)+
+  ggtitle("Humidity vs Count")
+
+#Windspeed vs Count
+A4 = ggplot(dat, aes(x= windspeed, y = cnt))+
+  geom_point(aes(col = windspeed), alpha = 0.3)+
+  scale_color_gradient(low = "#00AFBB", high = "blue")+
+  ggtitle("Windspeed vs Count")
+
+grid.arrange(A1, A2, A3, A4)
+```
+
+1.plot the correlation matrix among the numeric varibales.
+2.temp and atemp(feeling temperature) are positively correlated; one of them need to be obsolete to remove the effect of multicolinearity.
+```{r, message=FALSE}
+#correlation between numerical variables 
+library(corrplot)
+corrplot(cor(dat[, c(16,10,11,12,13)]), method = "circle", type = "full")
+```
+
+besides the multicolinearity problems mentioned above, data under each numeric variable are roughtly normal distributed.
+```{r, message=FALSE}
+#check multicollinear problem 
+library(PerformanceAnalytics)
+chart.Correlation(dat[, c(16,10,11,12,13)])
+```
+
+note: dont select temp 
+
+**categorical variable**
+generate box-plots by using the season versus casual, registered, and count(total demand)
+1.pattern on the casual vs season is more similar to the count vs season in contrast with registered vs season
+2.registered demand on season 4 only drop slightly when the casual demand slumps at the time slot.
+```{r, message=FALSE}
+#correlation between categorical variables and dependent variable
+#season 
+library(gridExtra)
+C1 = ggplot(dat, aes(x=as.factor(dat$season), y=dat$casual)) +
+  geom_boxplot(aes(col = as.factor(dat$season)), show.legend = FALSE) +
+  labs(title="casual vs season", ylab="casual", xlab="season")
+
+C2 = ggplot(dat, aes(x=as.factor(dat$season), y=dat$registered)) +
+  geom_boxplot(aes(col = as.factor(dat$season)), show.legend = FALSE)+
+  labs(title="registered vs season", ylab="registered", xlab="season")
+
+C3 = ggplot(dat, aes(x=as.factor(dat$season), y=dat$cnt)) +
+  geom_boxplot(aes(col = as.factor(dat$season)), show.legend = FALSE)+
+  labs(title="count vs season", ylab="count", xlab="season")
+
+grid.arrange(C1, C2, C3, layout_matrix = cbind(c(1,3), c(2,3)))
+```
+
+demands in terms of casual, registered, and total count all share the increasing pattern; 
+```{r}
+#years 
+C4 = ggplot(dat, aes(x=as.factor(dat$yr), y=dat$casual)) +
+  geom_boxplot(aes(col = as.factor(dat$yr)), show.legend = FALSE)+
+  labs(title="casual vs year", ylab="casual", xlab="year")
+
+C5 = ggplot(dat, aes(x=as.factor(dat$yr), y=dat$registered)) +
+  geom_boxplot(aes(col = as.factor(dat$yr)), show.legend = FALSE)+
+  labs(title="registered vs year", ylab="registered", xlab="year")
+
+C6 = ggplot(dat, aes(x=as.factor(dat$yr), y=dat$cnt)) +
+  geom_boxplot(aes(col = as.factor(dat$yr)), show.legend = FALSE)+
+  labs(title="count vs year", ylab="count", xlab="year")
+
+grid.arrange(C4, C5, C6, layout_matrix = cbind(c(1,3), c(2,3)))
+```
+Demand is lower in The first and last few months of a year
+```{r}
+#month
+C7 = ggplot(dat, aes(x=as.factor(dat$mnth), y=dat$casual)) +
+  geom_boxplot(aes(col = as.factor(dat$mnth)), show.legend = FALSE)+
+  labs(title="casual vs month", ylab="casual", xlab="month")
+
+C8 = ggplot(dat, aes(x=as.factor(dat$mnth), y=dat$registered)) +
+  geom_boxplot(aes(col = as.factor(dat$mnth)), show.legend = FALSE)+
+  labs(title="registered vs month", ylab="registered", xlab="month")
+
+C9 = ggplot(dat, aes(x=as.factor(dat$mnth), y=dat$cnt)) +
+  geom_boxplot(aes(col = as.factor(dat$mnth)), show.legend = FALSE)+
+  labs(title="count vs month", ylab="count", xlab="month")
+
+grid.arrange(C7, C8, C9, layout_matrix = cbind(c(1,3), c(2,3)))
+```
+Patterns for demand vs holiday is different beween the casual and registered users.
+demands of registered users is hihger on non-holiday while demands for casual usrs is higher on holiday.
+```{r}
+#holiday
+C10 = ggplot(dat, aes(x=as.factor(dat$holiday), y=dat$casual)) +
+  geom_boxplot(aes(col = as.factor(dat$holiday)), show.legend = FALSE)+
+  labs(title="casual vs holiday", ylab="casual", xlab="holiday")
+
+C11 = ggplot(dat, aes(x=as.factor(dat$holiday), y=dat$registered)) +
+  geom_boxplot(aes(col = as.factor(dat$holiday)), show.legend = FALSE)+
+  labs(title="registered vs holiday", ylab="registered", xlab="holiday")
+
+C12 = ggplot(dat, aes(x=as.factor(dat$holiday), y=dat$cnt)) +
+  geom_boxplot(aes(col = as.factor(dat$holiday)), show.legend = FALSE)+
+  labs(title="count vs holiday", ylab="count", xlab="holiday")
+
+grid.arrange(C10, C11, C12, layout_matrix = cbind(c(1,3), c(2,3)))
+```
+Sharing the similar observation above, registered users's demands are higher on weekdays while casual users' pattern goes reversely.
+```{r}
+#weekday 
+C13 = ggplot(dat, aes(x=as.factor(dat$weekday), y=dat$casual)) +
+  geom_boxplot(aes(col = as.factor(dat$weekday)), show.legend = FALSE)+
+  labs(title="casual vs weekday", ylab="casual", xlab="weekday")
+
+C14 = ggplot(dat, aes(x=as.factor(dat$weekday), y=dat$registered)) +
+  geom_boxplot(aes(col = as.factor(dat$weekday)), show.legend = FALSE)+
+  labs(title="registered vs weekday", ylab="registered", xlab="weekday")
+
+C15 = ggplot(dat, aes(x=as.factor(dat$weekday), y=dat$cnt)) +
+  geom_boxplot(aes(col = as.factor(dat$weekday)), show.legend = FALSE)+
+  labs(title="count vs weekday", ylab="count", xlab="weekday")
+
+grid.arrange(C13, C14, C15, layout_matrix = cbind(c(1,3), c(2,3)))
+```
+Sharing the similar observation above, registered users's demands are higher on workingday while casual users' pattern goes reversely.
+```{r}
+#workingday
+C16 = ggplot(dat, aes(x=as.factor(dat$workingday), y=dat$casual)) +
+  geom_boxplot(aes(col = as.factor(dat$workingday)), show.legend = FALSE)+
+  labs(title="casual vs workingday", ylab="casual", xlab="workingday")
+
+C17 = ggplot(dat, aes(x=as.factor(dat$workingday), y=dat$registered)) +
+  geom_boxplot(aes(col = as.factor(dat$workingday)), show.legend = FALSE)+
+  labs(title="registered vs workingday", ylab="registered", xlab="workingday")
+
+C18 = ggplot(dat, aes(x=as.factor(dat$workingday), y=dat$cnt)) +
+  geom_boxplot(aes(col = as.factor(dat$workingday)), show.legend = FALSE)+
+  labs(title="count vs workingday", ylab="count", xlab="workingday")
+
+grid.arrange(C16, C17, C18, layout_matrix = cbind(c(1,3), c(2,3)))
+```
+Wheathersit 2 and 3 marked as the severe wheather, thus the demands are lower in these two conditions on both casual and registered users.
+```{r}
+#weathersit
+C19 = ggplot(dat, aes(x=as.factor(dat$weathersit), y=dat$casual)) +
+  geom_boxplot(aes(col = as.factor(dat$weathersit)), show.legend = FALSE)+
+  labs(title="casual vs weathersit", ylab="casual", xlab="weathersit")
+
+C20 = ggplot(dat, aes(x=as.factor(dat$weathersit), y=dat$registered)) +
+  geom_boxplot(aes(col = as.factor(dat$weathersit)), show.legend = FALSE)+
+  labs(title="registered vs weathersit", ylab="registered", xlab="weathersit")
+
+C21 = ggplot(dat, aes(x=as.factor(dat$weathersit), y=dat$cnt)) +
+  geom_boxplot(aes(col = as.factor(dat$weathersit)), show.legend = FALSE)+
+  labs(title="count vs weathersit", ylab="count", xlab="weathersit")
+
+grid.arrange(C19, C20, C21, layout_matrix = cbind(c(1,3), c(2,3)))
+```
+
+
+
+>Split Dateset
+#set factor on categorical varibales, and leave others as numeric variables
+
+```{r}
+#transform categorical variables as factor 
+dat$season<-as.factor(dat$season)
+dat$holiday<-as.factor(dat$holiday)
+dat$workingday<-as.factor(dat$workingday)
+dat$weathersit<-as.factor(dat$weathersit)
+dat$weekday<-as.factor(dat$weekday)
+dat$yr<-as.factor(dat$yr)
+dat$mnth<-as.factor(dat$mnth)
+str(dat)
+```
+
+split the training and testing set in 8/2 ratio
+```{r}
+#split into training and testing set 
+train = dat[1: round((nrow(dat)*0.8)), ]
+test = dat[round(((nrow(dat)*0.8)+1)) : nrow(dat), ]
+dim(train)
+dim(test)
+```
+
+Modeling 
+all variables except workingday (shows NA on coefficient) are used in this model.
+instant and year are not significant when their p values is over the 5% significant level. 
+```{r}
+#model0-full model 
+model0 = lm(cnt ~ instant+season+yr+mnth+holiday+weekday+weathersit+atemp+hum+windspeed, data =train)
+summary(model0)
+```
+
+Note: if put workingday in regression, it shows NA. Thurs, we delect it. 
+besides instant and year, VIF of all the variables are lower than 10, which means the multicolinearity doesn't exist among them.
+```{r, message=FALSE}
+#VIF of model0
+library(car)
+vif(model0)
+```
+
+train a new model without yr1(year)
+small p values indicate that all variables are significant
+```{r}
+#model1 
+model1 = lm(cnt ~ instant+season+holiday+weekday+weathersit+atemp+hum+windspeed, data =train)
+summary(model1)
+```
+VIF of all the variables are lower than 10, so multicolinearity is not a problem here
+```{r}
+#VIF
+vif(model1)
+```
+
+check the assumptions. 
+distribution of residuals is roughly normal and constant.
+```{r}
+# check the assumptions 
+stdres=rstandard(model1) # generate standardized residuals
+par(mfrow=c(2,2))
+qqnorm(stdres,main='Normal Probability Plot',xlab='Normal Quantiles',ylab='Standardized Residual Quantiles') # Check normality
+abline(0,1, col = "red")
+plot(model1$fitted.values,stdres,main='Versus Fits',xlab='Fitted Value',ylab='Standardized Residual') # Check 0-mean & constant variance
+abline(0,0, col = "red")
+hist(stdres,main='Histogram',xlab='Standardized Residual') # Check residual distribution
+plot(train$instant,stdres,type="o",main='Versus Order',xlab='TimeIndex',ylab='Standardized Residual') # Check independence
+abline(0,0,col = "red")
+```
+
+**check assumption of constant variance**
+p = 7.378e-08 on BP test, assumption of constant variance is violated
+```{r, message=FALSE}
+#BP Test for checking the constant variance 
+library(car)
+ncvTest(model1)
+```
+
+*Note: Since the P-value is less than 0.05, we reject the null hypothesis. It means the constant variance assumption isn't satisfied.*
+plot the graphs between residuals and variables in order to fix the uncontant variance problem
+a trend is observed between residuals and atemp(feeling temperature)
+```{r}
+#residual plot of X's 
+par(mfrow=c(2,2))
+plot(train$atemp, stdres)
+abline(0,0, col = "red")
+plot(train$hum, stdres)
+abline(0,0, col = "red")
+plot(train$windspeed, stdres)
+abline(0,0, col = "red")
+```
+
+```{r}
+par(mfrow=c(2,2))
+plot(train$season, stdres)
+abline(0,0, col = "red")
+plot(train$holiday, stdres)
+abline(0,0, col = "red")
+plot(train$weekday, stdres)
+abline(0,0, col = "red")
+plot(train$weathersit, stdres)
+abline(0,0, col = "red")
+```
+conduct the quadric transformation on atemp; distribution of atemp turns to be more noraml after the tranformation
+```{r}
+#quadric transformation to atemp 
+train$sq_atemp = train$atemp ^2
+test$sq_atemp = test$atemp ^2
+```
+adding the higher order term (atemp^2) into the model
+```{r}
+#model2
+model2 = lm(cnt ~ instant+season+holiday+weekday+weathersit+atemp+sq_atemp+hum+windspeed, data =train)
+summary(model2)
+```
+*Note: Since the P-value is larger than 0.05, we don't reject the null hypothesis. It means the constant variance assumption is satisfied.*
+
+```{r, message=FALSE}
+#BP Test for checking the constant variance 
+library(car)
+ncvTest(model2)
+```
+
+
+
+
+**check assumption of independence**
+Cochrane-Orcutt test is used to check the residual dependence assumption
+```{r, message=FALSE}
+#Cochrane-Orcutt procedure [Testing coefficient for residuals regression]
+#check independence assumption 
+library(Hmisc)
+co_test = summary(lm(model2$residuals ~ Lag(model2$residuals, 1)))
+co_test
+```
+
+*Note: Since the P-value is less than 0.05, we reject the null hypothesis. It means the independence assumption isn't satified.*
+
+Conduct the log transformation on both dependent and indenpendent variables (predictors)
+```{r}
+#Cochrane-Orcutt method to fix the autocorrelation 
+rho = co_test$coefficients[2]
+train$lag_cnt = Lag(train$cnt,1)
+train$star_cnt = train$cnt - train$lag_cnt * rho
+
+train$lag_instant = Lag(train$instant,1)
+train$star_instant = train$instant - train$lag_instant * rho
+
+train$lag_season = Lag(train$season,1)
+train$star_season = as.numeric(train$season) - as.numeric(train$lag_season) * rho
+
+train$lag_holiday = Lag(train$holiday,1)
+train$star_holiday = as.numeric(train$holiday) - as.numeric(train$lag_holiday) * rho
+
+train$lag_weekday = Lag(train$weekday,1)
+train$star_weekday = as.numeric(train$weekday) - as.numeric(train$lag_weekday) * rho
+
+train$lag_weathersit = Lag(train$weathersit,1)
+train$star_weathersit = as.numeric(train$weathersit) - as.numeric(train$lag_weathersit) * rho
+
+train$lag_atemp = Lag(train$atemp,1)
+train$star_atemp = train$atemp - train$lag_atemp * rho
+
+train$lag_sq_atemp = Lag(train$sq_atemp,1)
+train$star_sq_atemp = train$sq_atemp - train$lag_sq_atemp * rho
+
+train$lag_windspeed = Lag(train$windspeed,1)
+train$star_windspeed = train$windspeed - rho * train$lag_windspeed
+
+train$lag_hum = Lag(train$hum,1)
+train$star_hum = train$hum - rho * train$lag_hum
+```
+
+```{r}
+co_reg = lm(star_cnt~ star_instant+star_season+star_holiday+star_weekday+star_weathersit+star_atemp+star_sq_atemp+star_hum+star_windspeed, data =train)
+summary(co_reg)
+```
+Cochrane-Orcutt test is passed after the log transformation
+
+```{r}
+#Cochrane-Orcutt method
+co_test2 = summary(lm(co_reg$residuals ~ Lag(co_reg$residuals, 1)))
+co_test2
+```
+use ANOVA to compare the full model and the one without the season and holiday variables due to their p values (>5%)
+once the p value is less than 2.2e-16, the larger model (model2) is significantly useful
+model2's r^2 is also larger than the small model, so model 2 is used on prediction
+```{r}
+co_pred = lm(cnt~ instant+weekday+weathersit+atemp+sq_atemp+hum+windspeed, data =train)
+anova(co_pred,model2)
+round(c(summary(co_pred)$r.squared, summary(model2)$r.squared),3)
+```
+*Note: Since the P-value is larger than 0.05, we don't reject the null hypothesis. It means the independence assumption is satified.*
+
+```{r}
+#auto correlation 
+acf(co_test2$residuals)
+```
+
+
+```{r}
+# check the assumptions for model2
+stdres2=rstandard(model2) # generate standardized residuals
+par(mfrow=c(2,2))
+qqnorm(stdres2,main='Normal Probability Plot',xlab='Normal Quantiles',ylab='Standardized Residual Quantiles') # Check normality
+abline(0,1, col = "red")
+plot(model2$fitted.values,stdres2,main='Versus Fits',xlab='Fitted Value',ylab='Standardized Residual') # Check 0-mean & constant variance
+abline(0,0, col = "red")
+hist(stdres2,main='Histogram',xlab='Standardized Residual') # Check residual distribution
+plot(train$instant,stdres,type="o",main='Versus Order',xlab='TimeIndex',ylab='Standardized Residual') # Check independence
+abline(0,0,col = "red")
+```
+
+
+Prediction 
+Used the model trained with instant+season+holiday+weekday+weathersit+atemp+sq_atemp+hum+windspeed to predict
+```{r}
+#test set 
+#model2 = lm(cnt ~ instant+season+holiday+weekday+weathersit+atemp+sq_atemp+hum+windspeed, data =train)
+prediction = predict(model2, newdata = test)
+```
+
+
+Accuracy: 
+RMSD =1298.555
+MAD=962.5566
+```{r}
+#Mean squred error of test set 
+n = length(test$cnt)
+rmsd=sqrt(sum((test$cnt - prediction)^2)/n)
+mad=sum(abs(test$cnt - prediction))/n
+rmsd
+mad
+```
+
+predicted dots scatter closely to the observed cnt (counts)
+```{r, warning=FALSE, message=F}
+library(tidyquant)
+ggplot(dat, aes(x= instant, y = cnt))+
+  geom_rect(xmin = 586, xmax = 800, ymin = -1000, ymax = 10000,fill = palette_light()[[4]], alpha = 0.01) +
+  annotate("text", x=300, y=7800, label = "Train Region", color = "blue") +
+  annotate("text", x=650, y=1500, label = "Test Region", color = "blue") +
+  geom_point(aes(col = cnt)) +
+  geom_point(aes(x = instant, y = prediction), data = test, alpha = 0.5, color = palette_light()[[2]])
+```
+
+

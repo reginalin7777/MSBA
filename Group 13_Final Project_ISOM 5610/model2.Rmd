@@ -1,0 +1,237 @@
+---
+title: "Untitled"
+author: "Regina Lin"
+date: "12/3/2018"
+output: html_document
+---
+
+---
+title: "Final_Project_Lin_Yiqi"
+author: "Regina Lin"
+date: "12/1/2018"
+output: html_document
+---
+
+Dateset 
+#import dataset BikeShareByDay.csv
+```{r}
+rm(list=ls())
+setwd("C:/Users/win/Desktop/Intro to BA/final project")
+dat = read.csv("BikeShareByDay.csv", header = T)
+head(dat, n=5)
+```
+
+
+Split Dateset
+#set factor on categorical varibales, and leave others as numeric variables
+```{r}
+#transform categorical variables as factor 
+dat$season<-as.factor(dat$season)
+dat$yr<-as.factor(dat$yr)
+dat$holiday<-as.factor(dat$holiday)
+dat$workingday<-as.factor(dat$workingday)
+dat$weathersit<-as.factor(dat$weathersit)
+dat$weekday<-as.factor(dat$weekday)
+dat$yr<-as.factor(dat$yr)
+dat$mnth<-as.factor(dat$mnth)
+str(dat)
+```
+
+#split the dataset into training and testing in 8/2 ratio
+```{r}
+#split into training and testing set 
+train = dat[1: round((nrow(dat)*0.8)), ]
+test = dat[round(((nrow(dat)*0.8)+1)) : nrow(dat), ]
+dim(train)
+dim(test)
+```
+
+
+Modeling 
+all variables except workingday (shows NA on coefficient) are used in this model.
+instant and year are not significant when their p values is over the 5% significant level. 
+```{r}
+#model0-full model 
+model0 = lm(cnt ~ instant+season+yr+mnth+holiday+weekday+weathersit+atemp+hum+windspeed, data =train)
+summary(model0)
+```
+
+Note: if put workingday in regression, it shows NA. Thurs, we delect it. 
+besides instant and year, VIF of all the variables are lower than 10, which means the multicolinearity doesn't exist among them.
+```{r, message=FALSE}
+#VIF of model0
+library(car)
+vif(model0)
+```
+
+train a model with variables except workingdays, months and instant
+```{r}
+#model1 
+model1 = lm(cnt ~ season+yr+holiday+weekday+weathersit+atemp+hum+windspeed, data =train)
+summary(model1)
+```
+all VIF are lower than 10 -> no multicolinearity 
+```{r}
+#VIF
+vif(model1)
+```
+
+
+```{r}
+# check the assumptions 
+stdres=rstandard(model1) # generate standardized residuals
+par(mfrow=c(2,2))
+qqnorm(stdres,main='Normal Probability Plot',xlab='Normal Quantiles',ylab='Standardized Residual Quantiles') # Check normality
+abline(0,1, col = "red")
+plot(model1$fitted.values,stdres,main='Versus Fits',xlab='Fitted Value',ylab='Standardized Residual') # Check 0-mean & constant variance
+abline(0,0, col = "red")
+hist(stdres,main='Histogram',xlab='Standardized Residual') # Check residual distribution
+plot(train$instant,stdres,type="o",main='Versus Order',xlab='TimeIndex',ylab='Standardized Residual') # Check independence
+abline(0,0,col = "red")
+```
+p = 1.1127e-11 on BP test, so the assumption of constant variance is violated
+```{r}
+ncvTest(model1)
+```
+quadric transformation on atemp(feeling temperature)
+```{r}
+#quadric transformation to atemp 
+train$sq_atemp = train$atemp ^2
+test$sq_atemp = test$atemp ^2
+```
+train the model again by adding the higher order term 
+```{r}
+#model2
+model2 = lm(cnt ~ season+holiday+yr+weekday+weathersit+atemp+sq_atemp+hum+windspeed, data =train)
+summary(model2)
+```
+
+p = 0.095032 on BP test -> assumption of constant variance passes
+```{r}
+ncvTest(model2)
+```
+Conduct the Cochrane-Orcutt test
+```{r, message=FALSE}
+#Cochrane-Orcutt procedure [Testing coefficient for residuals regression]
+#check independence assumption 
+library(Hmisc)
+co_test = summary(lm(model2$residuals ~ Lag(model2$residuals, 1)))
+co_test
+```
+Conduct log transformation to fix the autocorrelation problem
+```{r}
+#new model 
+#Cochrane-Orcutt method to fix the autocorrelation 
+rho = co_test$coefficients[2]
+train$lag_cnt = Lag(train$cnt,1)
+train$star_cnt = train$cnt - train$lag_cnt * rho
+
+train$lag_season = Lag(train$season,1)
+train$star_season = as.numeric(train$season) - as.numeric(train$lag_season) * rho
+
+train$lag_holiday = Lag(train$holiday,1)
+train$star_holiday = as.numeric(train$holiday) - as.numeric(train$lag_holiday) * rho
+
+train$lag_yr = Lag(train$yr,1)
+train$star_yr= as.numeric(train$yr) - as.numeric(train$lag_yr) * rho
+
+train$lag_weekday = Lag(train$weekday,1)
+train$star_weekday = as.numeric(train$weekday) - as.numeric(train$lag_weekday) * rho
+
+train$lag_weathersit = Lag(train$weathersit,1)
+train$star_weathersit = as.numeric(train$weathersit) - as.numeric(train$lag_weathersit) * rho
+
+train$lag_atemp = Lag(train$atemp,1)
+train$star_atemp = train$atemp - train$lag_atemp * rho
+
+train$lag_sq_atemp = Lag(train$sq_atemp,1)
+train$star_sq_atemp = train$sq_atemp - train$lag_sq_atemp * rho
+
+train$lag_windspeed = Lag(train$windspeed,1)
+train$star_windspeed = train$windspeed - rho * train$lag_windspeed
+
+train$lag_hum = Lag(train$hum,1)
+train$star_hum = train$hum - rho * train$lag_hum
+```
+
+
+```{r}
+co_reg = lm(star_cnt~ star_season+star_holiday+star_yr+star_weekday+star_weathersit+star_atemp+star_sq_atemp+star_hum+star_windspeed, data =train)
+summary(co_reg)
+```
+
+The true p-values indicate that "holiday" is not statistically significant. A new model that eliminates "holiday" is built. However, ANOVA result shows that the smaller model is statistically better.
+```{r}
+model3 = lm(cnt~ season+yr+weekday+weathersit+atemp+sq_atemp+hum+windspeed, data =train)
+summary(model3)
+anova(model3,model2)
+```
+
+
+p-value: 0.7459 on CO test indicated that the residuals are independent
+```{r}
+#Cochrane-Orcutt procedure [Testing coefficient for residuals regression]
+#check independence assumption 
+summary(lm(co_reg$residuals ~ Lag(co_reg$residuals, 1)))
+```
+
+
+
+```{r}
+# check the assumptions for model2
+stdres2=rstandard(model2) # generate standardized residuals
+par(mfrow=c(2,2))
+qqnorm(stdres2,main='Normal Probability Plot',xlab='Normal Quantiles',ylab='Standardized Residual Quantiles') # Check normality
+abline(0,1, col = "red")
+plot(model2$fitted.values,stdres2,main='Versus Fits',xlab='Fitted Value',ylab='Standardized Residual') # Check 0-mean & constant variance
+abline(0,0, col = "red")
+hist(stdres2,main='Histogram',xlab='Standardized Residual') # Check residual distribution
+plot(train$instant,stdres,type="o",main='Versus Order',xlab='TimeIndex',ylab='Standardized Residual') # Check independence
+abline(0,0,col = "red")
+```
+
+
+
+Prediction 
+model2 = lm(cnt ~ season+holiday+yr+weekday+weathersit+atemp+sq_atemp+hum+windspeed, data =train)
+model3 = lm(cnt~ season+yr+weekday+weathersit+atemp+sq_atemp+hum+windspeed, data =train)
+
+```{r}
+#test set 
+prediction = predict(model2, newdata = test)
+prediction2 = predict(model3, newdata = test)
+```
+
+Accuracy 
+Model 2
+RMSD:1086.433
+MAD:820.4542
+
+Model 3
+RMSD:1096.786
+MAD:826.1608
+
+Once the Accuracy of these two models are close,  Model 3 is picked for prediction due to its simplicity.
+```{r}
+#Mean squred error of test set 
+n = length(test$cnt)
+rmsd=sqrt(sum((test$cnt - prediction)^2)/n)
+mad=sum(abs(test$cnt - prediction))/n
+rmsd
+mad
+
+rmsd_2=sqrt(sum((test$cnt - prediction2)^2)/n)
+mad_2=sum(abs(test$cnt - prediction2))/n
+rmsd_2
+mad_2
+```
+predicted cnt lay closely to observed counts
+```{r,warning=F}
+library(tidyquant)
+ggplot(dat, aes(x= instant, y = cnt))+
+  geom_rect(xmin = 586, xmax = 800, ymin = -1000, ymax = 10000,fill = palette_light()[[4]], alpha = 0.01) +
+  annotate("text", x=300, y=7800, label = "Train Region", color = "blue") +
+  annotate("text", x=650, y=1500, label = "Test Region", color = "blue") +
+  geom_point(aes(col = cnt)) +
+  geom_point(aes(x = instant, y = prediction2), data = test, alpha = 0.5, color = palette_light()[[2]])
+```
